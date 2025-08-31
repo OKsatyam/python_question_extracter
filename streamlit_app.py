@@ -118,10 +118,15 @@ def extract_questions_with_year(pdf_file):
     return questions_data
 
 
-# ---------------- STEP 2: Generate Workbook PDF ----------------
+# ---------------- STEP 2: Generate Workbook PDF (FIXED) ----------------
 def generate_workbook(questions, output_path="chapter_wise_workbook.pdf"):
     """Generate chapter-wise organized workbook"""
     pdf = FPDF()
+    
+    # Set proper margins and page setup
+    pdf.set_margins(left=15, top=15, right=15)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
     pdf.add_page()
     pdf.set_font("Arial", size=16)
     pdf.cell(0, 15, "Chapter-wise Question Workbook", ln=True, align="C")
@@ -152,6 +157,8 @@ def generate_workbook(questions, output_path="chapter_wise_workbook.pdf"):
     sorted_chapters = sorted(chapters.keys(), key=chapter_sort_key)
 
     for chapter in sorted_chapters:
+        # Add new page for each chapter
+        pdf.add_page()
         pdf.set_font("Arial", "B", 14)
         pdf.cell(0, 12, f"{chapter}", ln=True)
         pdf.ln(5)
@@ -160,6 +167,11 @@ def generate_workbook(questions, output_path="chapter_wise_workbook.pdf"):
             # Add question header with marks
             pdf.set_font("Arial", "B", 12)
             header_text = f"Question {q['question_number']} (Year: {q['year']}) - [{q['marks']} marks]"
+            
+            # Check if we need a new page
+            if pdf.get_y() > 250:  # Near bottom of page
+                pdf.add_page()
+            
             pdf.cell(0, 8, header_text, ln=True)
             pdf.ln(3)
             
@@ -171,38 +183,115 @@ def generate_workbook(questions, output_path="chapter_wise_workbook.pdf"):
             for line in content_lines:
                 line = line.strip()
                 if line:
-                    # Handle different types of content
+                    # Clean the text for PDF compatibility
+                    clean_line = clean_text_for_pdf(line)
+                    
+                    # Skip empty lines after cleaning
+                    if not clean_line.strip():
+                        continue
+                    
+                    # Check page space before adding content
+                    if pdf.get_y() > 260:  # Near bottom of page
+                        pdf.add_page()
+                    
+                    # Handle different types of content with proper indentation
                     if re.match(r'[ABCD]\.', line):  # Options A. B. C. D.
                         pdf.set_font("Arial", size=10)
-                        pdf.cell(5, 5, "", ln=False)  # Indent options
+                        pdf.cell(10, 5, "", ln=False)  # Indent options
+                        try:
+                            # Use fixed width for better control
+                            pdf.multi_cell(170, 5, clean_line)
+                        except Exception as e:
+                            # Fallback: use simple cell if multi_cell fails
+                            pdf.cell(0, 5, clean_line[:100] + "..." if len(clean_line) > 100 else clean_line, ln=True)
                     elif re.match(r'[IVX]+\.', line):  # Roman numerals I. II. III. IV.
                         pdf.set_font("Arial", size=10)
-                        pdf.cell(5, 5, "", ln=False)  # Indent roman options
+                        pdf.cell(10, 5, "", ln=False)  # Indent roman options
+                        try:
+                            pdf.multi_cell(170, 5, clean_line)
+                        except Exception as e:
+                            pdf.cell(0, 5, clean_line[:100] + "..." if len(clean_line) > 100 else clean_line, ln=True)
                     elif re.match(r'[a-d]\.', line):  # Lower case options a. b. c. d.
                         pdf.set_font("Arial", size=10)
-                        pdf.cell(5, 5, "", ln=False)  # Indent lower options
+                        pdf.cell(10, 5, "", ln=False)  # Indent lower options
+                        try:
+                            pdf.multi_cell(170, 5, clean_line)
+                        except Exception as e:
+                            pdf.cell(0, 5, clean_line[:100] + "..." if len(clean_line) > 100 else clean_line, ln=True)
                     elif re.match(r'i+\)', line):  # Sub-questions i) ii) iii)
                         pdf.set_font("Arial", "B", 10)
+                        try:
+                            pdf.multi_cell(180, 5, clean_line)
+                        except Exception as e:
+                            pdf.cell(0, 5, clean_line[:100] + "..." if len(clean_line) > 100 else clean_line, ln=True)
                     else:
                         pdf.set_font("Arial", size=10)
-                    
-                    # Handle long lines by wrapping
-                    try:
-                        # Try to encode in latin-1, fallback to UTF-8 handling
-                        encoded_line = line.encode('latin-1', 'replace').decode('latin-1')
-                        pdf.multi_cell(0, 5, encoded_line)
-                    except:
-                        # If encoding fails, use a simplified version
-                        clean_line = ''.join(char if ord(char) < 128 else '?' for char in line)
-                        pdf.multi_cell(0, 5, clean_line)
+                        try:
+                            pdf.multi_cell(180, 5, clean_line)
+                        except Exception as e:
+                            pdf.cell(0, 5, clean_line[:100] + "..." if len(clean_line) > 100 else clean_line, ln=True)
                 else:
                     pdf.ln(2)  # Empty line spacing
             
-            pdf.ln(10)  # Space between questions
-        
-        pdf.ln(10)  # Space between chapters
+            pdf.ln(8)  # Space between questions
 
     pdf.output(output_path)
+
+
+def clean_text_for_pdf(text):
+    """Clean text for PDF compatibility"""
+    if not text:
+        return ""
+    
+    # Handle encoding issues - convert to ASCII-compatible text
+    clean_text = text.encode('ascii', 'ignore').decode('ascii')
+    
+    # Replace common problematic characters
+    replacements = {
+        '"': '"',
+        '"': '"',
+        ''': "'",
+        ''': "'",
+        '–': '-',
+        '—': '-',
+        '…': '...',
+        '°': ' degrees',
+        '±': '+/-',
+        '×': 'x',
+        '÷': '/',
+        '≤': '<=',
+        '≥': '>=',
+        '≠': '!=',
+        '√': 'sqrt',
+        '∞': 'infinity',
+        'α': 'alpha',
+        'β': 'beta',
+        'γ': 'gamma',
+        'δ': 'delta',
+        'θ': 'theta',
+        'λ': 'lambda',
+        'μ': 'mu',
+        'π': 'pi',
+        'σ': 'sigma',
+        'τ': 'tau',
+        'φ': 'phi',
+        'ω': 'omega'
+    }
+    
+    for old_char, new_char in replacements.items():
+        clean_text = clean_text.replace(old_char, new_char)
+    
+    # Remove any remaining non-ASCII characters
+    clean_text = re.sub(r'[^\x00-\x7F]+', ' ', clean_text)
+    
+    # Clean up extra whitespace
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    
+    # Ensure the text isn't empty after cleaning
+    if not clean_text.strip():
+        return "[Content could not be displayed]"
+    
+    return clean_text
 
 
 # ---------------- STEP 3: Bulk Assignment Helper ----------------
@@ -449,19 +538,23 @@ def main():
                 with col1:
                     if st.button("📄 Generate Chapter-wise Workbook", type="primary"):
                         with st.spinner("Generating workbook PDF..."):
-                            output_buffer = io.BytesIO()
-                            generate_workbook(questions, "temp_workbook.pdf")
-                            
-                            with open("temp_workbook.pdf", "rb") as f:
-                                output_buffer.write(f.read())
-                            output_buffer.seek(0)
-                            
-                            st.download_button(
-                                "📥 Download Workbook PDF",
-                                data=output_buffer.getvalue(),
-                                file_name="chapter_wise_workbook.pdf",
-                                mime="application/pdf"
-                            )
+                            try:
+                                generate_workbook(questions, "temp_workbook.pdf")
+                                
+                                with open("temp_workbook.pdf", "rb") as f:
+                                    pdf_data = f.read()
+                                
+                                st.download_button(
+                                    "📥 Download Workbook PDF",
+                                    data=pdf_data,
+                                    file_name="chapter_wise_workbook.pdf",
+                                    mime="application/pdf"
+                                )
+                                st.success("✅ Workbook generated successfully!")
+                                
+                            except Exception as e:
+                                st.error(f"❌ Error generating PDF: {str(e)}")
+                                st.write("Please try with fewer questions or contact support if the issue persists.")
                 
                 with col2:
                     if st.button("💾 Export Assignment Data"):
